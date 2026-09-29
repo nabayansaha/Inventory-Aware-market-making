@@ -132,7 +132,7 @@ void solveDpAsync(AppState& app) {
             app.finished = false;
             app.paused = true;
             app.running = false;
-            app.statusLine = "DP READY — press START";
+            app.statusLine = "DP READY - press START";
         }
         {
             std::lock_guard<std::mutex> lock(app.workerMu);
@@ -300,7 +300,7 @@ void drawControls(AppState& app) {
             app.paused = true;
             app.askFlash = 0.0f;
             app.bidFlash = 0.0f;
-            app.statusLine = "RESET — press START";
+            app.statusLine = "RESET - press START";
         }
     }
     ImGui::SameLine();
@@ -396,8 +396,8 @@ void drawInventoryPnL(const MarketMakerState& st) {
     ImGui::Text("ACTIVITY");
     const double lamTot = st.lambdaAsk + st.lambdaBid;
     const char* level = lamTot < 2.0 ? "LOW" : (lamTot < 6.0 ? "NORMAL" : "HIGH");
-    ImGui::Text("λa %.2f  λb %.2f", st.lambdaAsk, st.lambdaBid);
-    ImGui::Text("λtot %.2f  %s", lamTot, level);
+    ImGui::Text("la %.2f  lb %.2f", st.lambdaAsk, st.lambdaBid);
+    ImGui::Text("ltot %.2f  %s", lamTot, level);
     ImGui::Text("Trades %d", st.tradeCount);
     ImGui::Columns(1);
 
@@ -417,7 +417,7 @@ void drawStrategy(const AppState& app) {
     ImGui::Text("Optimal ask offset a*: %.4f", st.askOffset);
     ImGui::Text("Optimal bid offset b*: %.4f", st.bidOffset);
     ImGui::Text("Ask %.4f   Bid %.4f", st.askPrice, st.bidPrice);
-    ImGui::Text("λ ask %.4f   λ bid %.4f", st.lambdaAsk, st.lambdaBid);
+    ImGui::Text("ask intensity %.4f   bid intensity %.4f", st.lambdaAsk, st.lambdaBid);
     ImGui::Spacing();
     if (st.inventory > 0.5) {
         ImGui::TextWrapped(

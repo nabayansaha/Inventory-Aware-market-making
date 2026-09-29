@@ -19,7 +19,7 @@ void drawOrderBook(const MarketMakerState& state, float askFlash, float bidFlash
     ImGui::PushStyleColor(ImGuiCol_Text, askColor);
     ImGui::Text("           ASK");
     ImGui::Text("         %8.4f", state.askPrice);
-    ImGui::Text("      █████████████");
+    ImGui::Text("      #############");
     ImGui::PopStyleColor();
 
     ImGui::Spacing();
@@ -31,12 +31,12 @@ void drawOrderBook(const MarketMakerState& state, float askFlash, float bidFlash
     ImGui::Spacing();
     ImGui::PushStyleColor(ImGuiCol_Text, bidColor);
     ImGui::Text("         %8.4f", state.bidPrice);
-    ImGui::Text("      █████████████");
+    ImGui::Text("      #############");
     ImGui::Text("           BID");
     ImGui::PopStyleColor();
 
     ImGui::Spacing();
-    ImGui::Text("Spread: %.4f   λa=%.3f   λb=%.3f", state.askPrice - state.bidPrice,
+    ImGui::Text("Spread: %.4f   la=%.3f   lb=%.3f", state.askPrice - state.bidPrice,
                 state.lambdaAsk, state.lambdaBid);
     ImGui::EndChild();
 }
