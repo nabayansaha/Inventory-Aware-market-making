@@ -9,5 +9,6 @@ cmake-build-*/
 *.exe
 simulation.csv
 compile_commands.json
+imgui.ini
 .idea/
 .vscode/

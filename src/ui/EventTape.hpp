@@ -1,13 +1,13 @@
 #pragma once
 
 #include "simulation/MarketEvent.hpp"
-#include "simulation/MarketMakerState.hpp"
 
-#include <mutex>
 #include <vector>
 
 namespace mm {
 
-void drawEventTape(const std::vector<MarketEvent>& events, int maxRows = 40);
+// size_x/size_y <= 0 means stretch to remaining region.
+void drawEventTape(const std::vector<MarketEvent>& events, int maxRows = 120,
+                   float size_x = 0.0f, float size_y = 0.0f);
 
 }  // namespace mm

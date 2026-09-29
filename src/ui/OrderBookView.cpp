@@ -6,9 +6,10 @@
 
 namespace mm {
 
-void drawOrderBook(const MarketMakerState& state, float askFlash, float bidFlash) {
-    ImGui::BeginChild("OrderBook", ImVec2(0, 260), true);
-    ImGui::TextUnformatted("MARKET / QUOTES");
+void drawOrderBook(const MarketMakerState& state, float askFlash, float bidFlash,
+                   float height) {
+    ImGui::BeginChild("OrderBook", ImVec2(0, height), true);
+    ImGui::TextUnformatted("ORDER BOOK / QUOTES");
     ImGui::Separator();
 
     const ImVec4 askColor = ImVec4(0.2f + 0.6f * askFlash, 0.85f, 0.45f, 1.0f);
@@ -17,27 +18,28 @@ void drawOrderBook(const MarketMakerState& state, float askFlash, float bidFlash
 
     ImGui::Spacing();
     ImGui::PushStyleColor(ImGuiCol_Text, askColor);
-    ImGui::Text("           ASK");
-    ImGui::Text("         %8.4f", state.askPrice);
-    ImGui::Text("      #############");
+    ImGui::SetWindowFontScale(1.35f);
+    ImGui::Text("ASK   %.4f", state.askPrice);
+    ImGui::Text("##############");
     ImGui::PopStyleColor();
 
     ImGui::Spacing();
     ImGui::PushStyleColor(ImGuiCol_Text, midColor);
-    ImGui::Text("         %8.4f", state.midPrice);
-    ImGui::Text("           MID");
+    ImGui::Text("MID   %.4f", state.midPrice);
     ImGui::PopStyleColor();
 
     ImGui::Spacing();
     ImGui::PushStyleColor(ImGuiCol_Text, bidColor);
-    ImGui::Text("         %8.4f", state.bidPrice);
-    ImGui::Text("      #############");
-    ImGui::Text("           BID");
+    ImGui::Text("##############");
+    ImGui::Text("BID   %.4f", state.bidPrice);
+    ImGui::SetWindowFontScale(1.0f);
     ImGui::PopStyleColor();
 
     ImGui::Spacing();
-    ImGui::Text("Spread: %.4f   la=%.3f   lb=%.3f", state.askPrice - state.bidPrice,
-                state.lambdaAsk, state.lambdaBid);
+    ImGui::Separator();
+    ImGui::Text("Spread: %.4f", state.askPrice - state.bidPrice);
+    ImGui::Text("la=%.3f   lb=%.3f", state.lambdaAsk, state.lambdaBid);
+    ImGui::Text("a*=%.4f   b*=%.4f", state.askOffset, state.bidOffset);
     ImGui::EndChild();
 }
 

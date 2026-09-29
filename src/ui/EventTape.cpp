@@ -7,13 +7,18 @@
 
 namespace mm {
 
-void drawEventTape(const std::vector<MarketEvent>& events, int maxRows) {
-    ImGui::BeginChild("EventTape", ImVec2(0, 0), true);
+void drawEventTape(const std::vector<MarketEvent>& events, int maxRows, float size_x,
+                   float size_y) {
+    const ImVec2 size(size_x, size_y);
+    ImGui::BeginChild("EventTape", size, true, ImGuiWindowFlags_AlwaysVerticalScrollbar);
     ImGui::TextUnformatted("EVENT TAPE");
     ImGui::Separator();
 
     const int n = static_cast<int>(events.size());
     const int start = std::max(0, n - maxRows);
+    if (n == 0) {
+        ImGui::TextDisabled("No events yet. Press START to run the market.");
+    }
     for (int i = n - 1; i >= start; --i) {
         const auto& e = events[static_cast<std::size_t>(i)];
         ImVec4 color = ImVec4(0.75f, 0.78f, 0.85f, 1.0f);

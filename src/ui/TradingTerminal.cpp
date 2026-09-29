@@ -87,9 +87,69 @@ struct AppState {
     double traderPnL = 0.0;
     char strategyPath[512] = "traders/strategies/momentum_book.py";
     std::vector<char> strategyEdit = std::vector<char>(128 * 1024, '\0');
-    std::string strategyStatus = "Load or paste a decide(book, history, state) strategy";
+    std::string strategyStatus = "Load a .py strategy file, then Push to Bot";
     bool strategyDirty = false;
+    // 0 Live, 1 OrderBook, 2 Orders, 3 Trader, 4 MonteCarlo, 5 Summary
+    int mainView = 0;
 };
+
+bool loadStrategyFileInto(AppState& app) {
+    std::ifstream in(app.strategyPath);
+    if (!in) {
+        app.strategyStatus = std::string("Failed to open ") + app.strategyPath;
+        return false;
+    }
+    const std::string content((std::istreambuf_iterator<char>(in)),
+                              std::istreambuf_iterator<char>());
+    if (content.size() >= app.strategyEdit.size()) {
+        app.strategyStatus = "Strategy file too large (max ~128KB)";
+        return false;
+    }
+    std::fill(app.strategyEdit.begin(), app.strategyEdit.end(), '\0');
+    std::copy(content.begin(), content.end(), app.strategyEdit.begin());
+    app.strategyDirty = true;
+    app.strategyStatus = std::string("Loaded ") + app.strategyPath + " (" +
+                         std::to_string(content.size()) + " bytes)";
+    return true;
+}
+
+void pushStrategyToBot(AppState& app) {
+    if (!app.traderBridge || !app.traderPortEnabled) {
+        app.strategyStatus = "Enable Trader Port first, then Push";
+        return;
+    }
+    if (app.strategyEdit[0] == '\0') {
+        app.strategyStatus = "No strategy loaded - use Load Strategy File";
+        return;
+    }
+    app.traderBridge->setStrategySource(std::string(app.strategyEdit.data()));
+    app.strategyDirty = false;
+    app.strategyStatus = app.traderBridge->clientConnected()
+                             ? "Strategy pushed to connected Python bot"
+                             : "Strategy cached; will push when bot connects";
+    app.statusLine = app.strategyStatus;
+}
+
+void drawNavBar(AppState& app) {
+    const char* labels[] = {"Live", "Order Book", "Orders", "Trader / Upload",
+                            "Monte Carlo", "Summary"};
+    for (int i = 0; i < 6; ++i) {
+        if (i > 0) {
+            ImGui::SameLine();
+        }
+        const bool selected = app.mainView == i;
+        if (selected) {
+            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.18f, 0.55f, 0.38f, 1.0f));
+            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.22f, 0.62f, 0.44f, 1.0f));
+        }
+        if (ImGui::Button(labels[i], ImVec2(140, 36))) {
+            app.mainView = i;
+        }
+        if (selected) {
+            ImGui::PopStyleColor(2);
+        }
+    }
+}
 
 void applyDarkTheme() {
     ImGuiStyle& style = ImGui::GetStyle();
@@ -399,7 +459,7 @@ void drawControls(AppState& app) {
         ImGui::Text("Trader cash %.2f", app.traderCash);
         ImGui::Text("Trader inv  %.2f", app.traderInventory);
         ImGui::Text("Trader PnL  %.2f", app.traderPnL);
-        ImGui::TextDisabled("Use Trader + Orders tabs for strategy/orders");
+        ImGui::TextDisabled("Nav: Live | Order Book | Orders | Trader / Upload");
     }
 
     std::string workerStatus;
@@ -529,32 +589,32 @@ void drawSummary(const AppState& app) {
 }
 
 void drawActiveOrders(AppState& app) {
-    ImGui::BeginChild("OrdersTop", ImVec2(0, 120), true);
+    ImGui::BeginChild("OrdersTop", ImVec2(0, 100), true);
     ImGui::TextUnformatted("ACTIVE / RECENT ORDERS");
     ImGui::Separator();
     ImGui::TextWrapped(
-        "Python bot: resting LIMIT/STOP in the OMS. Poisson flow: inbound market orders "
-        "(no resting book) shown from the event tape.");
-    ImGui::Text("Dealer la=%.3f  lb=%.3f  (Poisson arrival pressure)", app.uiState.lambdaAsk,
-                app.uiState.lambdaBid);
-    ImGui::Text("Bot connected: %s   live bot orders: %d",
-                (app.traderBridge && app.traderBridge->clientConnected()) ? "yes" : "no",
-                app.traderLiveOrders);
+        "PYTHON: resting LIMIT/STOP from the bot OMS.  POISSON: recent market-order arrivals "
+        "(Poisson flow has no resting book).");
+    ImGui::Text("Dealer la=%.3f  lb=%.3f   Bot live orders: %d   client=%s",
+                app.uiState.lambdaAsk, app.uiState.lambdaBid, app.traderLiveOrders,
+                (app.traderBridge && app.traderBridge->clientConnected()) ? "yes" : "no");
     ImGui::EndChild();
 
-    ImGui::BeginChild("BotOrders", ImVec2(0, ImGui::GetContentRegionAvail().y * 0.45f), true);
+    const float half = ImGui::GetContentRegionAvail().y * 0.5f;
+    ImGui::BeginChild("BotOrders", ImVec2(0, half), true);
     ImGui::TextUnformatted("PYTHON BOT ORDERS");
     ImGui::Separator();
     if (ImGui::BeginTable("bot_orders", 7,
                           ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg |
-                              ImGuiTableFlags_ScrollY | ImGuiTableFlags_SizingStretchProp)) {
-        ImGui::TableSetupColumn("Source");
+                              ImGuiTableFlags_ScrollY | ImGuiTableFlags_SizingStretchProp |
+                              ImGuiTableFlags_BordersOuter)) {
+        ImGui::TableSetupColumn("Source", ImGuiTableColumnFlags_WidthFixed, 80);
         ImGui::TableSetupColumn("Id");
-        ImGui::TableSetupColumn("Type");
-        ImGui::TableSetupColumn("Side");
+        ImGui::TableSetupColumn("Type", ImGuiTableColumnFlags_WidthFixed, 80);
+        ImGui::TableSetupColumn("Side", ImGuiTableColumnFlags_WidthFixed, 60);
         ImGui::TableSetupColumn("Price/Stop");
-        ImGui::TableSetupColumn("Size");
-        ImGui::TableSetupColumn("Status");
+        ImGui::TableSetupColumn("Size", ImGuiTableColumnFlags_WidthFixed, 60);
+        ImGui::TableSetupColumn("Status", ImGuiTableColumnFlags_WidthFixed, 70);
         ImGui::TableHeadersRow();
         if (app.traderBridge) {
             for (const auto& [id, o] : app.traderBridge->oms().orders()) {
@@ -585,6 +645,10 @@ void drawActiveOrders(AppState& app) {
                 ImGui::TableNextColumn();
                 ImGui::TextUnformatted(o.status == ExtOrderStatus::Live ? "LIVE" : "FILLED");
             }
+        } else {
+            ImGui::TableNextRow();
+            ImGui::TableNextColumn();
+            ImGui::TextDisabled("Enable trader port and connect the Python bot");
         }
         ImGui::EndTable();
     }
@@ -596,7 +660,7 @@ void drawActiveOrders(AppState& app) {
     if (ImGui::BeginTable("poisson_orders", 6,
                           ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg |
                               ImGuiTableFlags_ScrollY | ImGuiTableFlags_SizingStretchProp)) {
-        ImGui::TableSetupColumn("Source");
+        ImGui::TableSetupColumn("Source", ImGuiTableColumnFlags_WidthFixed, 80);
         ImGui::TableSetupColumn("Time");
         ImGui::TableSetupColumn("Side");
         ImGui::TableSetupColumn("Price");
@@ -605,12 +669,9 @@ void drawActiveOrders(AppState& app) {
         ImGui::TableHeadersRow();
         const int n = static_cast<int>(app.uiEvents.size());
         int shown = 0;
-        for (int i = n - 1; i >= 0 && shown < 80; --i) {
+        for (int i = n - 1; i >= 0 && shown < 100; --i) {
             const auto& e = app.uiEvents[static_cast<std::size_t>(i)];
-            if (e.type != EventType::AskHit && e.type != EventType::BidHit) {
-                continue;
-            }
-            if (e.external) {
+            if ((e.type != EventType::AskHit && e.type != EventType::BidHit) || e.external) {
                 continue;
             }
             ImGui::TableNextRow();
@@ -634,59 +695,75 @@ void drawActiveOrders(AppState& app) {
 }
 
 void drawTraderTab(AppState& app) {
-    ImGui::BeginChild("TraderHeader", ImVec2(0, 90), true);
-    ImGui::TextUnformatted("PYTHON BOT / STRATEGY UPLOAD");
+    ImGui::BeginChild("TraderUploadBox", ImVec2(0, 160), true);
+    ImGui::TextUnformatted("UPLOAD PYTHON STRATEGY");
     ImGui::Separator();
     ImGui::TextWrapped(
-        "Upload a Python strategy that uses previous bid/ask and the order book. "
-        "Required function: decide(book, history, state) -> list of orders.");
-    ImGui::Text("Port %d | client=%s | PnL %.2f", app.traderPort,
+        "Provide a .py file that defines decide(book, history, state). "
+        "history contains previous bid/ask/mid snapshots and the full book ladder.");
+    ImGui::Spacing();
+    ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x - 260);
+    ImGui::InputText("##strategy_path", app.strategyPath, sizeof(app.strategyPath));
+    ImGui::SameLine();
+    if (ImGui::Button("Load Strategy File", ImVec2(140, 32))) {
+        loadStrategyFileInto(app);
+        app.mainView = 3;
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Push to Bot", ImVec2(100, 32))) {
+        pushStrategyToBot(app);
+    }
+    ImGui::TextColored(ImVec4(0.85f, 0.85f, 0.35f, 1.0f), "%s", app.strategyStatus.c_str());
+    ImGui::EndChild();
+
+    ImGui::BeginChild("TraderStatus", ImVec2(0, 70), true);
+    ImGui::Text("Port %d | client=%s | cash %.2f | inv %.2f | PnL %.2f", app.traderPort,
                 (app.traderBridge && app.traderBridge->clientConnected()) ? "CONNECTED" : "offline",
-                app.traderPnL);
+                app.traderCash, app.traderInventory, app.traderPnL);
+    ImGui::TextDisabled("Run: python3 traders/live_trader.py --port %d", app.traderPort);
     ImGui::EndChild();
 
-    ImGui::BeginChild("StrategyPathRow", ImVec2(0, 70), true);
-    ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x - 220);
-    ImGui::InputText("Strategy file", app.strategyPath, sizeof(app.strategyPath));
-    ImGui::SameLine();
-    if (ImGui::Button("Load File", ImVec2(100, 0))) {
-        std::ifstream in(app.strategyPath);
-        if (!in) {
-            app.strategyStatus = std::string("Failed to open ") + app.strategyPath;
-        } else {
-            const std::string content((std::istreambuf_iterator<char>(in)),
-                                      std::istreambuf_iterator<char>());
-            if (content.size() >= app.strategyEdit.size()) {
-                app.strategyStatus = "Strategy file too large";
-            } else {
-                std::fill(app.strategyEdit.begin(), app.strategyEdit.end(), '\0');
-                std::copy(content.begin(), content.end(), app.strategyEdit.begin());
-                app.strategyDirty = true;
-                app.strategyStatus = "Loaded " + std::string(app.strategyPath);
-            }
-        }
-    }
-    ImGui::SameLine();
-    if (ImGui::Button("Push to Bot", ImVec2(100, 0))) {
-        if (!app.traderBridge || !app.traderPortEnabled) {
-            app.strategyStatus = "Enable trader port first";
-        } else {
-            app.traderBridge->setStrategySource(std::string(app.strategyEdit.data()));
-            app.strategyDirty = false;
-            app.strategyStatus = app.traderBridge->clientConnected()
-                                     ? "Strategy pushed to connected bot"
-                                     : "Strategy cached; will push on connect";
-            app.statusLine = app.strategyStatus;
-        }
-    }
-    ImGui::TextWrapped("%s", app.strategyStatus.c_str());
-    ImGui::EndChild();
-
-    ImGui::TextUnformatted("Strategy source");
+    ImGui::TextUnformatted("Strategy source (editable)");
     ImGui::InputTextMultiline("##strategy_editor", app.strategyEdit.data(),
                               app.strategyEdit.size(),
                               ImVec2(-1, ImGui::GetContentRegionAvail().y - 8),
                               ImGuiInputTextFlags_AllowTabInput);
+}
+
+void drawLiveView(AppState& app) {
+    drawInventoryPnL(app.uiState);
+
+    const float avail = ImGui::GetContentRegionAvail().y;
+    const float row1 = std::max(300.0f, avail * 0.48f);
+    const float row2 = std::max(220.0f, avail - row1 - 8.0f);
+
+    ImGui::BeginChild("LiveRow1", ImVec2(0, row1), false);
+    ImGui::Columns(2, "live_row1", false);
+    ImGui::SetColumnWidth(0, ImGui::GetWindowWidth() * 0.58f);
+    drawPriceChart(app.uiEvents);
+    ImGui::NextColumn();
+    drawEventTape(app.uiEvents, 200, 0.0f, row1 - 8.0f);
+    ImGui::Columns(1);
+    ImGui::EndChild();
+
+    ImGui::BeginChild("LiveRow2", ImVec2(0, row2), false);
+    ImGui::Columns(2, "live_row2", false);
+    drawPnLChart(app.uiEvents);
+    ImGui::NextColumn();
+    drawInventoryChart(app.uiEvents);
+    ImGui::Columns(1);
+    ImGui::EndChild();
+}
+
+void drawOrderBookView(AppState& app) {
+    const float avail = ImGui::GetContentRegionAvail().y;
+    const float leftW = ImGui::GetContentRegionAvail().x * 0.42f;
+    ImGui::BeginChild("OBLeft", ImVec2(leftW, avail), false);
+    drawOrderBook(app.uiState, app.askFlash, app.bidFlash, avail * 0.55f);
+    drawStrategy(app);
+    ImGui::EndChild();
+    ImGui::SameLine();
+    drawEventTape(app.uiEvents, 250, 0.0f, avail);
 }
 
 void drawMonteCarlo(AppState& app) {
@@ -812,46 +889,53 @@ int runTradingTerminal(int argc, char** argv) {
 
         drawHeader(app.uiState, app.statusLine);
         ImGui::Separator();
+        drawNavBar(app);
+        ImGui::Separator();
 
-        ImGui::BeginChild("Left", ImVec2(400, 0), false);
+        ImGui::BeginChild("Left", ImVec2(380, 0), false);
         drawParams(app);
         drawControls(app);
+        ImGui::Separator();
+        ImGui::BeginChild("QuickUpload", ImVec2(0, 150), true);
+        ImGui::TextUnformatted("UPLOAD STRATEGY");
+        ImGui::SetNextItemWidth(-1);
+        ImGui::InputText("##quick_path", app.strategyPath, sizeof(app.strategyPath));
+        if (ImGui::Button("Load Strategy File", ImVec2(-1, 32))) {
+            if (loadStrategyFileInto(app)) {
+                app.mainView = 3;
+            }
+        }
+        if (ImGui::Button("Open Trader Page", ImVec2(-1, 28))) {
+            app.mainView = 3;
+        }
+        ImGui::TextWrapped("%s", app.strategyStatus.c_str());
+        ImGui::EndChild();
         ImGui::EndChild();
 
         ImGui::SameLine();
-        ImGui::BeginChild("Center", ImVec2(0, 0), false);
-        if (ImGui::BeginTabBar("MainTabs")) {
-            if (ImGui::BeginTabItem("Live")) {
-                drawOrderBook(app.uiState, app.askFlash, app.bidFlash);
-                drawInventoryPnL(app.uiState);
-                drawPriceChart(app.uiEvents);
-                drawPnLChart(app.uiEvents);
-                drawInventoryChart(app.uiEvents);
-
-                ImGui::Columns(2, nullptr, false);
-                drawEventTape(app.uiEvents);
-                ImGui::NextColumn();
-                drawStrategy(app);
-                ImGui::Columns(1);
-                ImGui::EndTabItem();
-            }
-            if (ImGui::BeginTabItem("Orders")) {
+        ImGui::BeginChild("Center", ImVec2(0, 0), true);
+        switch (app.mainView) {
+            case 0:
+                drawLiveView(app);
+                break;
+            case 1:
+                drawOrderBookView(app);
+                break;
+            case 2:
                 drawActiveOrders(app);
-                ImGui::EndTabItem();
-            }
-            if (ImGui::BeginTabItem("Trader")) {
+                break;
+            case 3:
                 drawTraderTab(app);
-                ImGui::EndTabItem();
-            }
-            if (ImGui::BeginTabItem("Monte Carlo")) {
+                break;
+            case 4:
                 drawMonteCarlo(app);
-                ImGui::EndTabItem();
-            }
-            if (ImGui::BeginTabItem("Summary")) {
+                break;
+            case 5:
                 drawSummary(app);
-                ImGui::EndTabItem();
-            }
-            ImGui::EndTabBar();
+                break;
+            default:
+                drawLiveView(app);
+                break;
         }
         ImGui::EndChild();
 
