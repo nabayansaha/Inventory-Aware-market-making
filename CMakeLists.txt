@@ -16,6 +16,8 @@ set(MM_CORE_SOURCES
     src/model/Model.cpp
     src/model/Utility.cpp
     src/model/PriceProcess.cpp
+    src/dp/Policy.cpp
+    src/dp/DPSolver.cpp
 )
 
 add_library(mm_core STATIC ${MM_CORE_SOURCES})
@@ -33,6 +35,7 @@ if(MM_BUILD_TESTS)
 
     add_executable(mm_tests
         tests/test_model.cpp
+        tests/test_dp.cpp
     )
     target_link_libraries(mm_tests PRIVATE mm_core Catch2::Catch2WithMain)
     include(Catch)

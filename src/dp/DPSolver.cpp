@@ -1,4 +1,4 @@
-#include "DPSolver.hpp"
+#include "dp/DPSolver.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -155,7 +155,7 @@ void DPSolver::solve() {
     for (int k = 0; k < points; ++k) {
         const double t = (points == 1) ? 0.0 : static_cast<double>(k) / (points - 1);
         aGrid[static_cast<std::size_t>(k)] = t * aMax;
-        bGrid[static_cast<std::size_t>(k)] = (1.0 - t) * bMin;  // from 0 down to bMin
+        bGrid[static_cast<std::size_t>(k)] = t * bMin;  // 0 down to bMin
     }
 
     std::vector<double> currentValues(nI, 0.0);
