@@ -41,6 +41,7 @@ if(MM_BUILD_TESTS)
         tests/test_dp.cpp
         tests/test_accounting.cpp
         tests/test_poisson.cpp
+        tests/test_montecarlo.cpp
     )
     target_link_libraries(mm_tests PRIVATE mm_core Catch2::Catch2WithMain)
     include(Catch)
@@ -93,7 +94,7 @@ if(MM_BUILD_UI)
         src/ui/OrderBookView.cpp
         src/ui/EventTape.cpp
     )
-    target_compile_definitions(market_maker PRIVATE MM_HAS_UI=1)
+    target_compile_definitions(market_maker PRIVATE MM_HAS_UI=1 GL_SILENCE_DEPRECATION=1)
     target_link_libraries(market_maker PRIVATE imgui_lib implot_lib)
 
     if(APPLE)
