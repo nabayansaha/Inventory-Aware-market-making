@@ -180,6 +180,28 @@ Tabs: **Live**, **Monte Carlo**, **Summary** (end-of-horizon report).
 
 ---
 
+## 13. Live Python trader
+
+The terminal can open a localhost TCP JSON bridge so an external Python trader
+receives the full synthetic order book and submits **MARKET**, **LIMIT**, or
+**STOP** orders against the dealer.
+
+1. Start the UI: `./build/market_maker`
+2. Click **Enable Trader Port** (default `8765`)
+3. Press **START** on the simulation
+4. In another terminal:
+
+```bash
+python3 traders/live_trader.py --host 127.0.0.1 --port 8765
+```
+
+Useful flags: `--edge`, `--min-spread`, `--size`, `--stop-ticks`.
+
+Protocol is line-delimited JSON (`book`, `place`, `cancel`, `fill`, `ack`,
+`reject`). External fills appear on the event tape with an `EXT` tag.
+
+---
+
 ## License
 
 Project code is provided as-is for research and education.

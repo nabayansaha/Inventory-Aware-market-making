@@ -6,6 +6,7 @@
 #include "dp/DPSolver.hpp"
 #include "model/Model.hpp"
 #include "simulation/MarketSimulator.hpp"
+#include "simulation/TraderBridge.hpp"
 #include "ui/Charts.hpp"
 #include "ui/EventTape.hpp"
 #include "ui/OrderBookView.hpp"
@@ -25,6 +26,7 @@
 #include <atomic>
 #include <chrono>
 #include <cmath>
+#include <cstdint>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -71,6 +73,15 @@ struct AppState {
 
     std::string csvPath = "simulation.csv";
     std::string statusLine = "MARKET MAKER ONLINE";
+
+    // External Python trader bridge
+    bool traderPortEnabled = false;
+    int traderPort = 8765;
+    std::unique_ptr<TraderBridge> traderBridge;
+    int traderLiveOrders = 0;
+    double traderCash = 0.0;
+    double traderInventory = 0.0;
+    double traderPnL = 0.0;
 };
 
 void applyDarkTheme() {
@@ -341,6 +352,42 @@ void drawControls(AppState& app) {
         }
     }
 
+    ImGui::Separator();
+    ImGui::TextUnformatted("EXTERNAL TRADER");
+    ImGui::InputInt("Port", &app.traderPort);
+    if (app.traderPort < 1) {
+        app.traderPort = 8765;
+    }
+    if (!app.traderPortEnabled) {
+        if (ImGui::Button("Enable Trader Port")) {
+            TraderBridgeConfig cfg;
+            cfg.port = static_cast<std::uint16_t>(app.traderPort);
+            app.traderBridge = std::make_unique<TraderBridge>(cfg);
+            if (app.traderBridge->start()) {
+                app.traderPortEnabled = true;
+                app.statusLine = "Trader port " + std::to_string(app.traderPort) + " listening";
+            } else {
+                app.traderBridge.reset();
+                app.statusLine = "Failed to bind trader port";
+            }
+        }
+    } else {
+        if (ImGui::Button("Disable Trader Port")) {
+            if (app.traderBridge) {
+                app.traderBridge->stop();
+            }
+            app.traderBridge.reset();
+            app.traderPortEnabled = false;
+            app.statusLine = "Trader port closed";
+        }
+        ImGui::Text("Listening :%d  client=%s", app.traderPort,
+                    (app.traderBridge && app.traderBridge->clientConnected()) ? "yes" : "no");
+        ImGui::Text("Open orders: %d", app.traderLiveOrders);
+        ImGui::Text("Trader cash: %.2f", app.traderCash);
+        ImGui::Text("Trader inv:  %.2f", app.traderInventory);
+        ImGui::Text("Trader PnL:  %.2f", app.traderPnL);
+    }
+
     std::string workerStatus;
     {
         std::lock_guard<std::mutex> lock(app.workerMu);
@@ -537,6 +584,33 @@ int runTradingTerminal(int argc, char** argv) {
         {
             std::lock_guard<std::mutex> lock(app.mu);
             advanceSimulation(app, wallDt);
+
+            if (app.traderBridge && app.traderPortEnabled && app.sim) {
+                auto fills = app.traderBridge->pollAndMatch(app.sim->state(), app.sim->events());
+                for (const auto& f : fills) {
+                    if (f.side == ExtSide::Buy) {
+                        app.sim->applyExternalBuy(f.size);
+                        app.askFlash = 1.0f;
+                    } else {
+                        app.sim->applyExternalSell(f.size);
+                        app.bidFlash = 1.0f;
+                    }
+                    // Refresh quotes after external inventory shock.
+                    // Quotes already on state; DP offsets update on next sim step.
+                }
+                if (!fills.empty()) {
+                    // Nudge policy offsets after inventory change without advancing time.
+                    // Re-query via a zero-dt quote refresh by taking a no-op: state already
+                    // updated; next Poisson step will recompute a*/b*.
+                    syncUiFromSim(app);
+                } else {
+                    app.uiState = app.sim->state();
+                }
+                app.traderLiveOrders = app.traderBridge->oms().liveCount();
+                app.traderCash = app.traderBridge->traderCash();
+                app.traderInventory = app.traderBridge->traderInventory();
+                app.traderPnL = app.traderBridge->traderPnL(app.uiState.midPrice);
+            }
         }
 
         ImGui_ImplOpenGL3_NewFrame();

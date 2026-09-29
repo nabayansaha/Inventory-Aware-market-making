@@ -20,6 +20,9 @@ set(MM_CORE_SOURCES
     src/dp/DPSolver.cpp
     src/simulation/MarketEvent.cpp
     src/simulation/MarketSimulator.cpp
+    src/simulation/ExternalOrderManager.cpp
+    src/simulation/TraderBridge.cpp
+    src/net/TcpJsonServer.cpp
     src/analysis/Statistics.cpp
 )
 
@@ -42,6 +45,7 @@ if(MM_BUILD_TESTS)
         tests/test_accounting.cpp
         tests/test_poisson.cpp
         tests/test_montecarlo.cpp
+        tests/test_oms.cpp
     )
     target_link_libraries(mm_tests PRIVATE mm_core Catch2::Catch2WithMain)
     include(Catch)

@@ -28,6 +28,7 @@ struct MarketEvent {
     double totalPnL = 0.0;
     double askOffset = 0.0;
     double bidOffset = 0.0;
+    bool external = false;
 
     static const char* typeName(EventType t) {
         switch (t) {

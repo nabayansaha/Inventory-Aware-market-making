@@ -41,11 +41,15 @@ public:
     double sampleWaitingTime(double lambdaAsk, double lambdaBid);
     bool sampleAskHit(double lambdaAsk, double lambdaBid);
 
+    // External trader: BUY hits ask, SELL hits bid.
+    void applyExternalBuy(double qty);
+    void applyExternalSell(double qty);
+
 private:
     void refreshQuotes(double omega, double epsilon);
-    void executeAskHit(double qty);
-    void executeBidHit(double qty);
-    void pushEvent(EventType type, double tradePrice, double tradeSize);
+    void executeAskHit(double qty, bool external);
+    void executeBidHit(double qty, bool external);
+    void pushEvent(EventType type, double tradePrice, double tradeSize, bool external);
 
     Model model_;
     Policy policy_;

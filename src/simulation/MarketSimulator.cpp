@@ -82,7 +82,8 @@ void MarketSimulator::refreshQuotes(double omega, double epsilon) {
     ++state_.quoteUpdates;
 }
 
-void MarketSimulator::pushEvent(EventType type, double tradePrice, double tradeSize) {
+void MarketSimulator::pushEvent(EventType type, double tradePrice, double tradeSize,
+                                bool external) {
     MarketEvent e;
     e.timestamp = state_.time;
     e.type = type;
@@ -100,12 +101,12 @@ void MarketSimulator::pushEvent(EventType type, double tradePrice, double tradeS
     e.totalPnL = state_.totalPnL;
     e.askOffset = state_.askOffset;
     e.bidOffset = state_.bidOffset;
+    e.external = external;
     events_.push_back(e);
 }
 
-void MarketSimulator::executeAskHit(double qty) {
+void MarketSimulator::executeAskHit(double qty, bool external) {
     const double tradePrice = state_.askPrice;
-    // Realized: sell inventory bought notionally at mid; capture ask - mid = askOffset
     state_.realizedPnL += qty * (tradePrice - state_.midPrice);
     state_.inventory -= qty;
     state_.cash += qty * tradePrice;
@@ -113,12 +114,11 @@ void MarketSimulator::executeAskHit(double qty) {
     ++state_.askHits;
     state_.noteInventoryExtremes();
     state_.updatePnL(initialWealth_);
-    pushEvent(EventType::AskHit, tradePrice, qty);
+    pushEvent(EventType::AskHit, tradePrice, qty, external);
 }
 
-void MarketSimulator::executeBidHit(double qty) {
+void MarketSimulator::executeBidHit(double qty, bool external) {
     const double tradePrice = state_.bidPrice;
-    // Buy at bid: mid - bid = -bidOffset capture (bidOffset <= 0)
     state_.realizedPnL += qty * (state_.midPrice - tradePrice);
     state_.inventory += qty;
     state_.cash -= qty * tradePrice;
@@ -126,8 +126,12 @@ void MarketSimulator::executeBidHit(double qty) {
     ++state_.bidHits;
     state_.noteInventoryExtremes();
     state_.updatePnL(initialWealth_);
-    pushEvent(EventType::BidHit, tradePrice, qty);
+    pushEvent(EventType::BidHit, tradePrice, qty, external);
 }
+
+void MarketSimulator::applyExternalBuy(double qty) { executeAskHit(qty, true); }
+
+void MarketSimulator::applyExternalSell(double qty) { executeBidHit(qty, true); }
 
 bool MarketSimulator::step() {
     if (finished()) {
@@ -148,7 +152,7 @@ bool MarketSimulator::step() {
         state_.askPrice = model_.askPrice(state_.midPrice, state_.askOffset);
         state_.bidPrice = model_.bidPrice(state_.midPrice, state_.bidOffset);
         state_.updatePnL(initialWealth_);
-        pushEvent(EventType::MidMove, 0.0, 0.0);
+        pushEvent(EventType::MidMove, 0.0, 0.0, false);
         return false;
     }
 
@@ -159,9 +163,9 @@ bool MarketSimulator::step() {
 
     const double qty = model_.params().orderSize;
     if (sampleAskHit(state_.lambdaAsk, state_.lambdaBid)) {
-        executeAskHit(qty);
+        executeAskHit(qty, false);
     } else {
-        executeBidHit(qty);
+        executeBidHit(qty, false);
     }
 
     // Recompute quotes after inventory change for next interval.

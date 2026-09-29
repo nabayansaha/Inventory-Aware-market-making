@@ -31,8 +31,9 @@ void drawEventTape(const std::vector<MarketEvent>& events, int maxRows) {
 
         ImGui::PushStyleColor(ImGuiCol_Text, color);
         if (e.type == EventType::AskHit || e.type == EventType::BidHit) {
-            ImGui::Text("%8.3f  %s  %.0f @ %.4f  %s", e.timestamp, side, e.tradeSize,
-                        e.tradePrice, MarketEvent::typeName(e.type));
+            ImGui::Text("%8.3f  %s  %.0f @ %.4f  %s%s", e.timestamp, side, e.tradeSize,
+                        e.tradePrice, MarketEvent::typeName(e.type),
+                        e.external ? " EXT" : "");
         } else {
             ImGui::Text("%8.3f  %s  mid=%.4f", e.timestamp, side, e.midPrice);
         }
