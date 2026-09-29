@@ -28,6 +28,8 @@
 #include <chrono>
 #include <cmath>
 #include <cstdint>
+#include <cstdio>
+#include <cstdlib>
 #include <fstream>
 #include <iterator>
 #include <memory>
@@ -35,6 +37,11 @@
 #include <string>
 #include <thread>
 #include <vector>
+
+#include <signal.h>
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <unistd.h>
 
 namespace mm {
 namespace {
@@ -91,7 +98,86 @@ struct AppState {
     bool strategyDirty = false;
     // 0 Live, 1 OrderBook, 2 Orders, 3 Trader, 4 MonteCarlo, 5 Summary
     int mainView = 0;
+    pid_t pythonBotPid = -1;
+    char pythonBin[256] = "python3";
+    char traderScript[512] = "traders/live_trader.py";
 };
+
+void stopPythonBot(AppState& app) {
+    if (app.pythonBotPid > 0) {
+        kill(app.pythonBotPid, SIGTERM);
+        int status = 0;
+        waitpid(app.pythonBotPid, &status, 0);
+        app.pythonBotPid = -1;
+        app.statusLine = "Python bot stopped";
+    }
+}
+
+bool ensureTraderPort(AppState& app) {
+    if (app.traderPortEnabled && app.traderBridge) {
+        return true;
+    }
+    TraderBridgeConfig cfg;
+    cfg.port = static_cast<std::uint16_t>(app.traderPort);
+    app.traderBridge = std::make_unique<TraderBridge>(cfg);
+    if (!app.traderBridge->start()) {
+        app.traderBridge.reset();
+        app.traderPortEnabled = false;
+        app.statusLine = "Failed to bind trader port";
+        return false;
+    }
+    app.traderPortEnabled = true;
+    if (app.strategyEdit[0] != '\0') {
+        app.traderBridge->setStrategySource(std::string(app.strategyEdit.data()));
+    }
+    return true;
+}
+
+bool startPythonBot(AppState& app) {
+    if (app.pythonBotPid > 0) {
+        if (waitpid(app.pythonBotPid, nullptr, WNOHANG) == 0) {
+            app.statusLine = "Python bot already running";
+            return true;
+        }
+        app.pythonBotPid = -1;
+    }
+    if (!ensureTraderPort(app)) {
+        return false;
+    }
+
+    const pid_t pid = fork();
+    if (pid < 0) {
+        app.statusLine = "fork() failed for Python bot";
+        return false;
+    }
+    if (pid == 0) {
+        char portBuf[16];
+        std::snprintf(portBuf, sizeof(portBuf), "%d", app.traderPort);
+        char* args[10];
+        int n = 0;
+        args[n++] = app.pythonBin;
+        args[n++] = app.traderScript;
+        args[n++] = const_cast<char*>("--host");
+        args[n++] = const_cast<char*>("127.0.0.1");
+        args[n++] = const_cast<char*>("--port");
+        args[n++] = portBuf;
+        if (app.strategyPath[0] != '\0') {
+            args[n++] = const_cast<char*>("--strategy");
+            args[n++] = app.strategyPath;
+        }
+        args[n] = nullptr;
+        execvp(app.pythonBin, args);
+        std::fprintf(stderr, "execvp(%s) failed\n", app.pythonBin);
+        _exit(127);
+    }
+
+    app.pythonBotPid = pid;
+    if (app.strategyEdit[0] != '\0' && app.traderBridge) {
+        app.traderBridge->setStrategySource(std::string(app.strategyEdit.data()));
+    }
+    app.statusLine = "Python bot launched (pid " + std::to_string(pid) + ")";
+    return true;
+}
 
 bool loadStrategyFileInto(AppState& app) {
     std::ifstream in(app.strategyPath);
@@ -420,30 +506,33 @@ void drawControls(AppState& app) {
     }
 
     ImGui::Separator();
-    ImGui::TextUnformatted("EXTERNAL TRADER PORT");
+    ImGui::TextUnformatted("PYTHON TRADER (from this app)");
     ImGui::SetNextItemWidth(-1);
     ImGui::InputInt("##port", &app.traderPort);
     if (app.traderPort < 1) {
         app.traderPort = 8765;
     }
+
+    const bool botAlive =
+        app.pythonBotPid > 0 && waitpid(app.pythonBotPid, nullptr, WNOHANG) == 0;
+    if (!botAlive && app.pythonBotPid > 0) {
+        app.pythonBotPid = -1;
+    }
+
+    if (ImGui::Button("Start Python Bot", ImVec2(-1, 40))) {
+        startPythonBot(app);
+    }
+    if (ImGui::Button("Stop Python Bot", ImVec2(-1, 32))) {
+        stopPythonBot(app);
+    }
+
     if (!app.traderPortEnabled) {
-        if (ImGui::Button("Enable Trader Port", ImVec2(-1, 36))) {
-            TraderBridgeConfig cfg;
-            cfg.port = static_cast<std::uint16_t>(app.traderPort);
-            app.traderBridge = std::make_unique<TraderBridge>(cfg);
-            if (app.traderBridge->start()) {
-                app.traderPortEnabled = true;
-                if (app.strategyEdit[0] != '\0') {
-                    app.traderBridge->setStrategySource(std::string(app.strategyEdit.data()));
-                }
-                app.statusLine = "Trader port " + std::to_string(app.traderPort) + " listening";
-            } else {
-                app.traderBridge.reset();
-                app.statusLine = "Failed to bind trader port";
-            }
+        if (ImGui::Button("Enable Port Only", ImVec2(-1, 28))) {
+            ensureTraderPort(app);
         }
     } else {
-        if (ImGui::Button("Disable Trader Port", ImVec2(-1, 36))) {
+        if (ImGui::Button("Disable Trader Port", ImVec2(-1, 28))) {
+            stopPythonBot(app);
             if (app.traderBridge) {
                 app.traderBridge->stop();
             }
@@ -451,15 +540,18 @@ void drawControls(AppState& app) {
             app.traderPortEnabled = false;
             app.statusLine = "Trader port closed";
         }
-        ImGui::TextWrapped("Listening :%d\nClient: %s\nLive bot orders: %d", app.traderPort,
+        const std::string botPidText =
+            botAlive ? std::to_string(app.pythonBotPid) : std::string("none");
+        ImGui::TextWrapped("Listening :%d\nClient: %s\nBot pid: %s\nLive bot orders: %d",
+                           app.traderPort,
                            (app.traderBridge && app.traderBridge->clientConnected()) ? "CONNECTED"
                                                                                     : "waiting",
-                           app.traderLiveOrders);
+                           botPidText.c_str(), app.traderLiveOrders);
         ImGui::Spacing();
         ImGui::Text("Trader cash %.2f", app.traderCash);
         ImGui::Text("Trader inv  %.2f", app.traderInventory);
         ImGui::Text("Trader PnL  %.2f", app.traderPnL);
-        ImGui::TextDisabled("Nav: Live | Order Book | Orders | Trader / Upload");
+        ImGui::TextDisabled("Nav: Order Book | Orders | Trader / Upload");
     }
 
     std::string workerStatus;
@@ -713,6 +805,14 @@ void drawTraderTab(AppState& app) {
     if (ImGui::Button("Push to Bot", ImVec2(100, 32))) {
         pushStrategyToBot(app);
     }
+    ImGui::SameLine();
+    if (ImGui::Button("Start Bot from App", ImVec2(140, 32))) {
+        startPythonBot(app);
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Stop Bot", ImVec2(80, 32))) {
+        stopPythonBot(app);
+    }
     ImGui::TextColored(ImVec4(0.85f, 0.85f, 0.35f, 1.0f), "%s", app.strategyStatus.c_str());
     ImGui::EndChild();
 
@@ -720,7 +820,7 @@ void drawTraderTab(AppState& app) {
     ImGui::Text("Port %d | client=%s | cash %.2f | inv %.2f | PnL %.2f", app.traderPort,
                 (app.traderBridge && app.traderBridge->clientConnected()) ? "CONNECTED" : "offline",
                 app.traderCash, app.traderInventory, app.traderPnL);
-    ImGui::TextDisabled("Run: python3 traders/live_trader.py --port %d", app.traderPort);
+    ImGui::TextDisabled("Use Start Bot from App (or sidebar Start Python Bot) — no separate terminal needed");
     ImGui::EndChild();
 
     ImGui::TextUnformatted("Strategy source (editable)");
@@ -905,6 +1005,9 @@ int runTradingTerminal(int argc, char** argv) {
                 app.mainView = 3;
             }
         }
+        if (ImGui::Button("Start Python Bot", ImVec2(-1, 36))) {
+            startPythonBot(app);
+        }
         if (ImGui::Button("Open Trader Page", ImVec2(-1, 28))) {
             app.mainView = 3;
         }
@@ -955,6 +1058,7 @@ int runTradingTerminal(int argc, char** argv) {
     ImGui_ImplGlfw_Shutdown();
     ImPlot::DestroyContext();
     ImGui::DestroyContext();
+    stopPythonBot(app);
     glfwDestroyWindow(window);
     glfwTerminate();
     return 0;

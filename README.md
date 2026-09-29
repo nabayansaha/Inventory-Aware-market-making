@@ -182,15 +182,18 @@ Tabs: **Live**, **Monte Carlo**, **Summary** (end-of-horizon report).
 
 ## 13. Live Python trader
 
-The terminal can open a localhost TCP JSON bridge so an external Python trader
-receives the full synthetic order book and submits **MARKET**, **LIMIT**, or
-**STOP** orders against the dealer.
+The terminal opens a localhost TCP JSON bridge and can **launch the Python bot
+itself** (fork/exec of `traders/live_trader.py`). No separate terminal is required.
 
 1. Start the UI: `./build/market_maker`
-2. Click **Enable Trader Port** (default `8765`)
-3. Open the **Trader** tab, load a strategy file (or edit inline), click **Push to Bot**
-4. Press **START** on the simulation
-5. In another terminal:
+2. Click **Start Python Bot** in the left panel (or **Start Bot from App** on the
+   **Trader** tab). This binds the port (default `8765`) and starts the bot.
+3. Optionally open **Trader**, load/edit a strategy, and click **Push to Bot**.
+4. Press **START** on the simulation.
+
+**Stop Python Bot** kills the child process; closing the app also stops it.
+
+Optional (manual) launch still works if you prefer a separate shell:
 
 ```bash
 python3 traders/live_trader.py --host 127.0.0.1 --port 8765
