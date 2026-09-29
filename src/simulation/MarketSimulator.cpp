@@ -37,6 +37,9 @@ void MarketSimulator::reset(std::uint64_t seed) {
     initialWealth_ = state_.wealth();
     avgEntryMid_ = p.initialMid;
     events_.clear();
+    if (events_.capacity() < 4096) {
+        events_.reserve(4096);
+    }
     refreshQuotes(0.0, 0.0);
     state_.updatePnL(initialWealth_);
 }
