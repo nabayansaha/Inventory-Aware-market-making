@@ -16,7 +16,6 @@
 #include <imgui_impl_opengl3.h>
 #include <implot.h>
 
-#define GL_SILENCE_DEPRECATION
 #if defined(__APPLE__)
 #include <OpenGL/gl.h>
 #else
