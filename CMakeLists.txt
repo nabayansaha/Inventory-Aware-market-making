@@ -50,7 +50,53 @@ endif()
 add_executable(market_maker src/main.cpp)
 target_link_libraries(market_maker PRIVATE mm_core)
 
-# UI wiring added in Phase 5+.
 if(MM_BUILD_UI)
-    message(STATUS "MM_BUILD_UI=ON (UI sources linked when present)")
+    find_package(OpenGL REQUIRED)
+    find_package(glfw3 REQUIRED)
+
+    FetchContent_Declare(
+        imgui
+        GIT_REPOSITORY https://github.com/ocornut/imgui.git
+        GIT_TAG v1.90.9
+    )
+    FetchContent_Declare(
+        implot
+        GIT_REPOSITORY https://github.com/epezent/implot.git
+        GIT_TAG v0.16
+    )
+    FetchContent_MakeAvailable(imgui implot)
+
+    add_library(imgui_lib STATIC
+        ${imgui_SOURCE_DIR}/imgui.cpp
+        ${imgui_SOURCE_DIR}/imgui_draw.cpp
+        ${imgui_SOURCE_DIR}/imgui_tables.cpp
+        ${imgui_SOURCE_DIR}/imgui_widgets.cpp
+        ${imgui_SOURCE_DIR}/backends/imgui_impl_glfw.cpp
+        ${imgui_SOURCE_DIR}/backends/imgui_impl_opengl3.cpp
+    )
+    target_include_directories(imgui_lib PUBLIC
+        ${imgui_SOURCE_DIR}
+        ${imgui_SOURCE_DIR}/backends
+    )
+    target_link_libraries(imgui_lib PUBLIC glfw OpenGL::GL)
+
+    add_library(implot_lib STATIC
+        ${implot_SOURCE_DIR}/implot.cpp
+        ${implot_SOURCE_DIR}/implot_items.cpp
+    )
+    target_include_directories(implot_lib PUBLIC ${implot_SOURCE_DIR})
+    target_link_libraries(implot_lib PUBLIC imgui_lib)
+
+    target_sources(market_maker PRIVATE
+        src/ui/TradingTerminal.cpp
+        src/ui/Charts.cpp
+        src/ui/OrderBookView.cpp
+        src/ui/EventTape.cpp
+    )
+    target_compile_definitions(market_maker PRIVATE MM_HAS_UI=1)
+    target_link_libraries(market_maker PRIVATE imgui_lib implot_lib)
+
+    if(APPLE)
+        target_link_libraries(market_maker PRIVATE "-framework Cocoa" "-framework IOKit" "-framework CoreVideo")
+    endif()
 endif()
