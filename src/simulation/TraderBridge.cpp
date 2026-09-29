@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
 #include <sstream>
 
 namespace mm {
@@ -68,14 +69,50 @@ void TraderBridge::stop() { server_.stop(); }
 
 std::string TraderBridge::jsonEscape(const std::string& s) {
     std::string out;
-    out.reserve(s.size());
-    for (char c : s) {
-        if (c == '"' || c == '\\') {
-            out.push_back('\\');
+    out.reserve(s.size() + 16);
+    for (unsigned char c : s) {
+        switch (c) {
+            case '"':
+                out += "\\\"";
+                break;
+            case '\\':
+                out += "\\\\";
+                break;
+            case '\n':
+                out += "\\n";
+                break;
+            case '\r':
+                out += "\\r";
+                break;
+            case '\t':
+                out += "\\t";
+                break;
+            default:
+                if (c < 0x20) {
+                    char buf[8];
+                    std::snprintf(buf, sizeof(buf), "\\u%04x", c);
+                    out += buf;
+                } else {
+                    out.push_back(static_cast<char>(c));
+                }
+                break;
         }
-        out.push_back(c);
     }
     return out;
+}
+
+void TraderBridge::setStrategySource(std::string source) {
+    strategySource_ = std::move(source);
+    pushStrategyToClient();
+}
+
+void TraderBridge::pushStrategyToClient() {
+    if (strategySource_.empty() || !server_.clientConnected()) {
+        return;
+    }
+    std::ostringstream oss;
+    oss << "{\"type\":\"set_strategy\",\"source\":\"" << jsonEscape(strategySource_) << "\"}";
+    server_.sendLine(oss.str());
 }
 
 void TraderBridge::onFill(const ExternalFill& fill, bool /*hitAsk*/) {
@@ -211,12 +248,24 @@ void TraderBridge::handleLine(const std::string& line, const MarketMakerState& /
     }
     if (type == "ping") {
         server_.sendLine(R"({"type":"pong"})");
+        return;
+    }
+    if (type == "strategy_ack") {
+        // Python bot acknowledgement; no action required beyond logging status via UI poll.
+        return;
     }
 }
 
 std::vector<ExternalFill> TraderBridge::pollAndMatch(
     const MarketMakerState& state, const std::vector<MarketEvent>& recentEvents) {
+    const bool connectedBefore = clientWasConnected_;
     server_.poll();
+    const bool connectedNow = server_.clientConnected();
+    if (connectedNow && !connectedBefore) {
+        pushStrategyToClient();
+    }
+    clientWasConnected_ = connectedNow;
+
     for (const auto& line : server_.drainIncoming()) {
         handleLine(line, state);
     }

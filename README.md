@@ -188,17 +188,35 @@ receives the full synthetic order book and submits **MARKET**, **LIMIT**, or
 
 1. Start the UI: `./build/market_maker`
 2. Click **Enable Trader Port** (default `8765`)
-3. Press **START** on the simulation
-4. In another terminal:
+3. Open the **Trader** tab, load a strategy file (or edit inline), click **Push to Bot**
+4. Press **START** on the simulation
+5. In another terminal:
 
 ```bash
 python3 traders/live_trader.py --host 127.0.0.1 --port 8765
+# or with a file:
+python3 traders/live_trader.py --strategy traders/strategies/momentum_book.py
 ```
+
+### Strategy API
+
+Uploaded / pushed strategies must define:
+
+```python
+def decide(book, history, state):
+    # history: prior bid/ask/mid snapshots
+    # return list of {"order_type","side","size",...}
+    return []
+```
+
+Example: `traders/strategies/momentum_book.py` uses previous bid/ask moves and book width.
+
+The **Orders** tab lists live Python LIMIT/STOP orders and recent Poisson market-flow hits.
 
 Useful flags: `--edge`, `--min-spread`, `--size`, `--stop-ticks`.
 
-Protocol is line-delimited JSON (`book`, `place`, `cancel`, `fill`, `ack`,
-`reject`). External fills appear on the event tape with an `EXT` tag.
+Protocol is line-delimited JSON (`book`, `place`, `cancel`, `fill`, `set_strategy`,
+`ack`, `reject`). External fills appear on the event tape with an `EXT` tag.
 
 ---
 

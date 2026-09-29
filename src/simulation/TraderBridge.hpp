@@ -51,6 +51,11 @@ public:
         traderInventory_ = 0.0;
     }
 
+    // Push strategy source to the connected Python bot (and cache for reconnect).
+    void setStrategySource(std::string source);
+    const std::string& strategySource() const { return strategySource_; }
+    void pushStrategyToClient();
+
 private:
     void handleLine(const std::string& line, const MarketMakerState& state);
     void onFill(const ExternalFill& fill, bool /*hitAsk*/);
@@ -62,6 +67,8 @@ private:
     std::uint64_t seq_ = 0;
     double traderCash_ = 0.0;
     double traderInventory_ = 0.0;
+    std::string strategySource_;
+    bool clientWasConnected_ = false;
 };
 
 }  // namespace mm

@@ -7,7 +7,7 @@
 namespace mm {
 
 void drawOrderBook(const MarketMakerState& state, float askFlash, float bidFlash) {
-    ImGui::BeginChild("OrderBook", ImVec2(0, 220), true);
+    ImGui::BeginChild("OrderBook", ImVec2(0, 260), true);
     ImGui::TextUnformatted("MARKET / QUOTES");
     ImGui::Separator();
 
