@@ -20,6 +20,7 @@ set(MM_CORE_SOURCES
     src/dp/DPSolver.cpp
     src/simulation/MarketEvent.cpp
     src/simulation/MarketSimulator.cpp
+    src/analysis/Statistics.cpp
 )
 
 add_library(mm_core STATIC ${MM_CORE_SOURCES})
@@ -46,6 +47,10 @@ if(MM_BUILD_TESTS)
     catch_discover_tests(mm_tests)
 endif()
 
-# Placeholder executable until later phases wire the full app.
 add_executable(market_maker src/main.cpp)
 target_link_libraries(market_maker PRIVATE mm_core)
+
+# UI wiring added in Phase 5+.
+if(MM_BUILD_UI)
+    message(STATUS "MM_BUILD_UI=ON (UI sources linked when present)")
+endif()
