@@ -1,6 +1,7 @@
 #include "ui/TradingTerminal.hpp"
 
 #include "analysis/CsvExport.hpp"
+#include "analysis/MonteCarlo.hpp"
 #include "analysis/Statistics.hpp"
 #include "dp/DPSolver.hpp"
 #include "model/Model.hpp"
@@ -161,55 +162,23 @@ void runMonteCarloAsync(AppState& app) {
             params = app.appliedParams;
             runs = app.mcRuns;
         }
-        if (policy.empty()) {
-            Model model(params);
-            DPSolver solver(model, IdentityUtility{},
-                            DPConfig{DPResolution::Fast, 3});
-            solver.solve();
-            policy = solver.policy();
-        }
 
-        std::vector<double> pnls;
-        std::vector<double> invs;
-        std::vector<double> maxAbs;
-        pnls.reserve(static_cast<std::size_t>(runs));
-        invs.reserve(static_cast<std::size_t>(runs));
-        maxAbs.reserve(static_cast<std::size_t>(runs));
-
-        for (int i = 0; i < runs; ++i) {
-            MarketSimulator sim(Model(params), policy, params.seed + static_cast<std::uint64_t>(i));
-            sim.runToEnd();
-            pnls.push_back(sim.state().totalPnL);
-            invs.push_back(sim.state().inventory);
-            maxAbs.push_back(std::max(std::abs(sim.state().maxInventory),
-                                      std::abs(sim.state().minInventory)));
-            if ((i + 1) % 50 == 0) {
+        auto result = runMonteCarlo(params, policy, runs, params.seed, [&](int done, int total) {
+            if (done % 50 == 0 || done == total) {
                 std::lock_guard<std::mutex> lock(app.workerMu);
-                app.workerStatus = "Monte Carlo " + std::to_string(i + 1) + "/" + std::to_string(runs);
+                app.workerStatus =
+                    "Monte Carlo " + std::to_string(done) + "/" + std::to_string(total);
             }
-        }
-
-        const auto pnlStats = summarize(pnls);
-        const auto invStats = summarize(invs);
-        double meanMaxAbs = 0.0;
-        for (double v : maxAbs) {
-            meanMaxAbs += v;
-        }
-        if (!maxAbs.empty()) {
-            meanMaxAbs /= static_cast<double>(maxAbs.size());
-        }
+        });
 
         {
             std::lock_guard<std::mutex> lock(app.mu);
-            app.mcPnL = std::move(pnls);
-            app.mcInventory = std::move(invs);
-            app.mcMaxAbsInventory = std::move(maxAbs);
-            app.mcPnLStats = pnlStats;
-            app.mcInvStats = invStats;
-            app.mcMeanMaxAbsInv = meanMaxAbs;
-            if (app.policy.empty()) {
-                app.policy = policy;
-            }
+            app.mcPnL = std::move(result.pnl);
+            app.mcInventory = std::move(result.finalInventory);
+            app.mcMaxAbsInventory = std::move(result.maxAbsInventory);
+            app.mcPnLStats = result.pnlStats;
+            app.mcInvStats = result.inventoryStats;
+            app.mcMeanMaxAbsInv = result.meanMaxAbsInventory;
         }
         {
             std::lock_guard<std::mutex> lock(app.workerMu);
@@ -224,7 +193,14 @@ void syncUiFromSim(AppState& app) {
         return;
     }
     app.uiState = app.sim->state();
-    app.uiEvents = app.sim->events();
+    // Append-only sync: avoid full vector copy each frame when possible.
+    const auto& src = app.sim->events();
+    if (app.uiEvents.size() > src.size()) {
+        app.uiEvents = src;
+    } else if (app.uiEvents.size() < src.size()) {
+        app.uiEvents.insert(app.uiEvents.end(), src.begin() + static_cast<std::ptrdiff_t>(app.uiEvents.size()),
+                            src.end());
+    }
 }
 
 void advanceSimulation(AppState& app, double wallDt) {
@@ -489,6 +465,7 @@ void drawSummary(const AppState& app) {
     ImGui::Text("Inventory P&L:       %.4f", st.totalPnL - st.realizedPnL);
     ImGui::Text("Total P&L:           %.4f", st.totalPnL);
     drawPnLChart(app.uiEvents);
+    drawInventoryChart(app.uiEvents);
 }
 
 void drawMonteCarlo(AppState& app) {
@@ -590,6 +567,7 @@ int runTradingTerminal(int argc, char** argv) {
                 drawInventoryPnL(app.uiState);
                 drawPriceChart(app.uiEvents);
                 drawPnLChart(app.uiEvents);
+                drawInventoryChart(app.uiEvents);
 
                 ImGui::Columns(2, nullptr, false);
                 drawEventTape(app.uiEvents);

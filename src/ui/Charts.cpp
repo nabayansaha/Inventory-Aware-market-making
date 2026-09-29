@@ -12,31 +12,35 @@ namespace {
 
 void collectSeries(const std::vector<MarketEvent>& events, std::vector<double>& t,
                    std::vector<double>& mid, std::vector<double>& bid,
-                   std::vector<double>& ask, std::vector<double>& pnl) {
+                   std::vector<double>& ask, std::vector<double>& pnl,
+                   std::vector<double>& inv) {
     t.clear();
     mid.clear();
     bid.clear();
     ask.clear();
     pnl.clear();
+    inv.clear();
     t.reserve(events.size());
     mid.reserve(events.size());
     bid.reserve(events.size());
     ask.reserve(events.size());
     pnl.reserve(events.size());
+    inv.reserve(events.size());
     for (const auto& e : events) {
         t.push_back(e.timestamp);
         mid.push_back(e.midPrice);
         bid.push_back(e.bidPrice);
         ask.push_back(e.askPrice);
         pnl.push_back(e.totalPnL);
+        inv.push_back(e.inventoryAfter);
     }
 }
 
 }  // namespace
 
 void drawPriceChart(const std::vector<MarketEvent>& events) {
-    std::vector<double> t, mid, bid, ask, pnl;
-    collectSeries(events, t, mid, bid, ask, pnl);
+    std::vector<double> t, mid, bid, ask, pnl, inv;
+    collectSeries(events, t, mid, bid, ask, pnl, inv);
     if (ImPlot::BeginPlot("Price", ImVec2(-1, 220))) {
         ImPlot::SetupAxes("time", "price");
         if (!t.empty()) {
@@ -49,12 +53,24 @@ void drawPriceChart(const std::vector<MarketEvent>& events) {
 }
 
 void drawPnLChart(const std::vector<MarketEvent>& events) {
-    std::vector<double> t, mid, bid, ask, pnl;
-    collectSeries(events, t, mid, bid, ask, pnl);
+    std::vector<double> t, mid, bid, ask, pnl, inv;
+    collectSeries(events, t, mid, bid, ask, pnl, inv);
     if (ImPlot::BeginPlot("Total P&L", ImVec2(-1, 180))) {
         ImPlot::SetupAxes("time", "pnl");
         if (!t.empty()) {
             ImPlot::PlotLine("PnL", t.data(), pnl.data(), static_cast<int>(t.size()));
+        }
+        ImPlot::EndPlot();
+    }
+}
+
+void drawInventoryChart(const std::vector<MarketEvent>& events) {
+    std::vector<double> t, mid, bid, ask, pnl, inv;
+    collectSeries(events, t, mid, bid, ask, pnl, inv);
+    if (ImPlot::BeginPlot("Inventory", ImVec2(-1, 160))) {
+        ImPlot::SetupAxes("time", "inventory");
+        if (!t.empty()) {
+            ImPlot::PlotLine("I(t)", t.data(), inv.data(), static_cast<int>(t.size()));
         }
         ImPlot::EndPlot();
     }
